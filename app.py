@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 from datetime import date, timedelta
-import plotly.express as px
 from login import login
 import os
 
@@ -48,6 +47,10 @@ if current_role == "admin":
         with open(DATA_PATH, "wb") as f:
             f.write(uploaded.getbuffer())
 
+        st.cache_data.clear()
+        st.success("✅ New file uploaded and data refreshed")
+        st.rerun()
+
 if not os.path.exists(DATA_PATH):
     st.info("📥 No data available. Admin must upload an Excel file.")
     st.stop()
@@ -64,19 +67,25 @@ def load_data(path):
 df = load_data(DATA_PATH)
 
 # ----------------------------------
-# DATE HANDLING
+# DATE HANDLING (SEPARATE df_time)
 # ----------------------------------
-df["received_on"] = pd.to_datetime(df["received_on"], errors="coerce")
-df = df.dropna(subset=["received_on"])
+df_time = df.copy()
 
-df["date"] = df["received_on"].dt.date
-df["month"] = df["received_on"].dt.to_period("M").astype(str)
+df_time["received_on"] = pd.to_datetime(
+    df_time["received_on"], errors="coerce"
+)
+
+df_time = df_time.dropna(subset=["received_on"])
+
+df_time["date"] = df_time["received_on"].dt.date
+df_time["month"] = df_time["received_on"].dt.to_period("M").astype(str)
 
 # ----------------------------------
 # USER ACCESS CONTROL
 # ----------------------------------
 if current_role != "admin":
     df = df[df["username"] == current_user]
+    df_time = df_time[df_time["username"] == current_user]
     st.info(f"🔒 You are viewing only your own records ({current_user})")
 
 # ----------------------------------
@@ -84,34 +93,48 @@ if current_role != "admin":
 # ----------------------------------
 st.sidebar.header("🔎 Filters")
 
-region_filter = st.sidebar.multiselect("Region", sorted(df["region_name"].dropna().unique()))
-woreda_filter = st.sidebar.multiselect("Woreda", sorted(df["woreda_name"].dropna().unique()))
-organizer_filter = st.sidebar.multiselect("Event organizer", sorted(df["event_organizer_name"].dropna().unique()))
-event_filter = st.sidebar.multiselect("Event ID", sorted(df["event_id"].dropna().unique()))
+region_filter = st.sidebar.multiselect(
+    "Region", sorted(df["region_name"].dropna().unique())
+)
+woreda_filter = st.sidebar.multiselect(
+    "Woreda", sorted(df["woreda_name"].dropna().unique())
+)
+organizer_filter = st.sidebar.multiselect(
+    "Event organizer", sorted(df["event_organizer_name"].dropna().unique())
+)
+event_filter = st.sidebar.multiselect(
+    "Event ID", sorted(df["event_id"].dropna().unique())
+)
 
-# ✅ Only show username filter for admins
 if current_role == "admin":
-    username_filter = st.sidebar.multiselect("User", sorted(df["username"].dropna().unique()))
+    username_filter = st.sidebar.multiselect(
+        "User", sorted(df["username"].dropna().unique())
+    )
 else:
-    username_filter = [current_user]  # Non-admins only see their own username
+    username_filter = [current_user]
 
-# Apply filters
-if region_filter:
-    df = df[df["region_name"].isin(region_filter)]
-if woreda_filter:
-    df = df[df["woreda_name"].isin(woreda_filter)]
-if organizer_filter:
-    df = df[df["event_organizer_name"].isin(organizer_filter)]
-if event_filter:
-    df = df[df["event_id"].isin(event_filter)]
-if username_filter:
-    df = df[df["username"].isin(username_filter)]
+# ---- Apply filters to BOTH df & df_time
+def apply_filters(data):
+    if region_filter:
+        data = data[data["region_name"].isin(region_filter)]
+    if woreda_filter:
+        data = data[data["woreda_name"].isin(woreda_filter)]
+    if organizer_filter:
+        data = data[data["event_organizer_name"].isin(organizer_filter)]
+    if event_filter:
+        data = data[data["event_id"].isin(event_filter)]
+    if username_filter:
+        data = data[data["username"].isin(username_filter)]
+    return data
 
+df = apply_filters(df)
+df_time = apply_filters(df_time)
 
 # ----------------------------------
-# KPI CARDS
+# KPI CARDS (USE df)
 # ----------------------------------
 today = date.today()
+
 k1, k2, k3, k4, k5, k6, k7 = st.columns(7)
 
 k1.metric("📄 Total records", len(df))
@@ -119,31 +142,31 @@ k2.metric("👤 Users", df["username"].nunique())
 k3.metric("🌍 Regions", df["region_name"].nunique())
 k4.metric("🗺️ Woredas", df["woreda_name"].nunique())
 k5.metric("🎪 Organizers", df["event_organizer_name"].nunique())
-k6.metric("📅 Today", df[df["date"] == today].shape[0])
-k7.metric("📆 This month", df[df["month"] == today.strftime("%Y-%m")].shape[0])
+k6.metric("📅 Today", df_time[df_time["date"] == today].shape[0])
+k7.metric("📆 This month", df_time[df_time["month"] == today.strftime("%Y-%m")].shape[0])
 
 st.divider()
 
 # ----------------------------------
-# 📊 DATA ENTRY TRENDS
+# 📊 DATA ENTRY TRENDS (USE df_time)
 # ----------------------------------
 st.subheader("🕒 Data Entry Trends")
 
-# ---- Last 7 days (DAY LABELS)
 last_7_days = today - timedelta(days=6)
 
 daily_7 = (
-    df[df["date"] >= last_7_days]
+    df_time[df_time["date"] >= last_7_days]
     .groupby("date")
     .size()
     .reset_index(name="records")
 )
 
-daily_7["day_label"] = pd.to_datetime(daily_7["date"]).dt.strftime("%b %d")
+daily_7["day_label"] = pd.to_datetime(
+    daily_7["date"]
+).dt.strftime("%b %d")
 
-# ---- Monthly trend
 monthly_trend = (
-    df.groupby("month")
+    df_time.groupby("month")
     .size()
     .reset_index(name="records")
 )
@@ -161,7 +184,7 @@ with c2:
 st.divider()
 
 # ----------------------------------
-# ENUMERATOR PERFORMANCE
+# 👤 ENUMERATOR PERFORMANCE
 # ----------------------------------
 st.subheader("👤 Enumerator performance")
 
@@ -173,7 +196,7 @@ user_summary = (
 )
 
 daily_user = (
-    df.groupby(["date", "username"])
+    df_time.groupby(["date", "username"])
     .size()
     .reset_index(name="records")
 )
@@ -191,9 +214,9 @@ with c4:
 st.divider()
 
 # ----------------------------------
-# 🌍 GEOGRAPHIC +  TABLES
+# 🌍 EVENT & GEOGRAPHIC TABLES
 # ----------------------------------
-st.subheader("📍 Event & Geographic  Coverage")
+st.subheader("📍 Event & Geographic Coverage")
 
 geo_summary = (
     df.groupby(["region_name", "woreda_name"])
@@ -213,9 +236,7 @@ c5, c6 = st.columns(2)
 with c5:
     st.markdown("**🎪 Records by Event ID**")
     st.dataframe(event_summary, use_container_width=True)
-    
 
 with c6:
     st.markdown("**🌍 Geographic coverage**")
     st.dataframe(geo_summary, use_container_width=True)
-    
