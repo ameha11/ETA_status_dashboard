@@ -42,18 +42,33 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 DATA_PATH = os.path.join(UPLOAD_DIR, "latest_uploaded.xlsx")
 
 if current_role == "admin":
-    uploaded = st.sidebar.file_uploader("📁 Upload Excel file", type=["xlsx", "xls"])
+    uploaded = st.sidebar.file_uploader(
+        "📁 Upload Excel file",
+        type=["xlsx", "xls"],
+        key="uploader"
+    )
+
     if uploaded:
         with open(DATA_PATH, "wb") as f:
             f.write(uploaded.getbuffer())
 
+        # 🔥 HARD RESET
         st.cache_data.clear()
-        st.success("✅ New file uploaded and data refreshed")
+
+        # Preserve login but reset everything else
+        logged_in = st.session_state.get("logged_in")
+        user = st.session_state.get("user")
+        role = st.session_state.get("role")
+
+        st.session_state.clear()
+
+        st.session_state["logged_in"] = logged_in
+        st.session_state["user"] = user
+        st.session_state["role"] = role
+
+        st.success("✅ New file uploaded and dashboard refreshed")
         st.rerun()
 
-if not os.path.exists(DATA_PATH):
-    st.info("📥 No data available. Admin must upload an Excel file.")
-    st.stop()
 
 # ----------------------------------
 # LOAD DATA
