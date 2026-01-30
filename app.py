@@ -146,6 +146,30 @@ df = apply_filters(df)
 df_time = apply_filters(df_time)
 
 # ----------------------------------
+# DATE FILTER (APPLIES TO df_time ONLY)
+# ----------------------------------
+#st.sidebar.subheader("📅 Date filter")
+
+min_date = df_time["date"].min()
+max_date = df_time["date"].max()
+
+date_range = st.sidebar.date_input(
+    "Select date range",
+    value=(min_date, max_date),
+    min_value=min_date,
+    max_value=max_date
+)
+
+# Apply date range to df_time only
+if isinstance(date_range, tuple) and len(date_range) == 2:
+    start_date, end_date = date_range
+    df_time = df_time[
+        (df_time["date"] >= start_date) &
+        (df_time["date"] <= end_date)
+    ]
+
+
+# ----------------------------------
 # KPI CARDS (USE df)
 # ----------------------------------
 today = date.today()
