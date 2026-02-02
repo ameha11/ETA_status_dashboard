@@ -198,11 +198,22 @@ daily_7 = (
     .groupby("date")
     .size()
     .reset_index(name="records")
+    
 )
 
-daily_7["day_label"] = pd.to_datetime(
-    daily_7["date"]
-).dt.strftime("%b %d")
+daily_7 = daily_7.sort_values("date") 
+
+# 2. Create the labels
+daily_7["day_label"] = pd.to_datetime(daily_7["date"]).dt.strftime("%b %d")
+
+# 3. FIX: Convert to Categorical to lock the current (chronological) order
+daily_7["day_label"] = pd.Categorical(
+    daily_7["day_label"], 
+    categories=daily_7["day_label"].unique(), 
+    ordered=True
+)
+
+
 
 monthly_trend = (
     df_time.groupby("month")
